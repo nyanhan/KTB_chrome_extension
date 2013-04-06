@@ -1,0 +1,46 @@
+{
+  // Required
+  "name": "KANTUBAN.COM",
+  "version": "0.0.1",
+  "manifest_version": 2,
+
+  "icons": {
+    "128": "icons/icon128.png",
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png"
+  },
+
+  // Recommended
+  "description": "看图班・最专业的旅行相册",
+  "browser_action": {
+    "default_icon": {
+      "19": "icons/icon19.png",
+      "38": "icons/icon38.png"
+    },
+    "default_title": "看图班",
+    "default_popup": "popup.html"
+  },
+
+  "permissions": [
+    "cookies",
+    "tabs",
+    "http://*/*",
+    "https://*/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["js/frames.js", "js/Q.js", "js/document_analyse.js"],
+      "run_at": "document_end",
+      "all_frames": true
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["js/top.js"],
+      "run_at": "document_end"
+    }
+  ],
+
+  "options_page": "preferences.html"
+}
