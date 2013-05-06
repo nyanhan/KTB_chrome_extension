@@ -1,60 +1,108 @@
 var Analyser = (function(){
- 
+
 var returnObject = {};
+var reCssUrl = /url\((.+?)\)/g;
+var callbacks = {};
+var AP = Array.prototype;
+var CSSOM_HELPER = "ktb_extension_cssom_parse_helper";
 
-function getXPathFromElement(element) {
 
-    if (element.id) {
-        return 'id("' + element.id + '")';
-    }
+function formatHTMLAsync(element){
 
-    if (element === document.documentElement) {
-        return element.tagName.toLowerCase();
-    }
-
-    var ix= 0;
-    var siblings= element.parentNode.childNodes;
-    var sibling;
-
-    for (var i = 0, l = siblings.length; i < l; i++) {
-        sibling = siblings[i];
-
-        if (sibling === element) {
-            return getXPathFromElement(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1)+ ']';
-        }
-
-        if (sibling.nodeType === 1 && sibling.tagName === element.tagName) { ix++; }
-    }
-}
-
-function formatHTML(element){
     var d = Q.defer();
 
     switch(element.tagName) {
+
         case "IMG":
 
             if (element.src) {
-                wget(element.src, function(data){
-                    element.src = data;
+
+                if (element.src.indexOf("data:") === 0) {
                     d.resolve();
-                });
+                } else {
+                    Request.GetImage(element.src, function(data){
+                        element.src = data;
+                        d.resolve();
+                    });
+                }
+
+            } else {
+                d.resolve();
             }
 
             break;
+
+        case "STYLE":
+
+            filterStyles(element.textContent, function(css){
+                element.innerHTML = css.toString();
+                d.resolve();
+            }, location.href);
+
+            break;
+
+        case "LINK":
+
+            if (element.href) {
+
+                if (/\.css($|\?|#|&)/.test(element.href)) {
+
+                    Request.GetText(element.href, function(data){
+
+                        if (data) {
+
+                            filterStyles(data, function(css){
+
+                                var style = document.createElement("style");
+                                style.type = "text/css";
+                                style.innerHTML = css.toString();
+
+                                if (element.getAttribute("media")) {
+                                    style.setAttribute("media", element.getAttribute("media"));
+                                }
+
+                                element.insertAdjacentElement("afterEnd", style);
+                                element.parentNode.removeChild(element);
+                                d.resolve();
+
+                            }, element.href);
+
+                        } else {
+
+                            element.parentNode.removeChild(element);
+                            d.resolve();
+
+                        }
+
+                    });
+
+                } else {
+                    element.parentNode.removeChild(element);
+                    d.resolve();
+                }
+
+            } else {
+                d.resolve();
+            }
+
+            break;
+
         case "IFRAME":
-            break;
         case "FRAME":
+            element.src = "about:blank";
+            fetchFrameContent(element.__source, function(content){
+
+                var container = document.createElement("pre");
+                container.className = "ktb_extension_iframe_placeholder";
+                container.style.display = "none";
+                container.textContent = content;
+
+                element.insertAdjacentElement("afterEnd", container);
+                d.resolve();
+            });
+
             break;
-        case "OBJECT":
-            break;
-        case "EMBED":
-            break;
-        case "APPLET":
-            break;
-        case "AUDIO":
-            break;
-        case "VIDEO":
-            break;
+
         default:
             d.resolve();
             break;
@@ -63,137 +111,532 @@ function formatHTML(element){
     return d.promise;
 }
 
-function formatCss(element, raw, reset){
+function formatElementSync(element, raw, reset_size) {
 
-    if (reset) {
-        resetCss(element);
+    if (element.nodeType !== 1) {
+        // TODO 可能有条件注释 删除掉
+        element.parentNode.removeChild(element);
+        return;
     }
 
-    var d = Q.defer();
+    if (reset_size) {
+        resetElementStyle(element, raw, reset_size);
+    }
 
-    var background = getStyle(raw, "background-image");
-    var temp;
+    element.__source = raw;
 
-    if (background && background.indexOf("url(") === 0) {
-        temp = background.match(/[^\(\)\'\"]+/g);
-        background = temp ? temp[1] : null;
+    switch(element.tagName) {
+
+        case "FORM":
+            element.removeAttribute("action");
+            break;
+
+        case "BUTTON":
+        case "INPUT":
+
+            if (element.type === "submit") {
+                element.type = "button";
+            }
+
+            break;
+
+        case "A":
+
+            if (!element.href || element.getAttribute("href") === "#") {
+                element.href = "#";
+            } else if (element.href.trimLeft().indexOf("javascript:") === 0) {
+                // 去掉 href 中的 非 url;
+                element.href = "#";
+            } else if (element.getAttribute("href") && element.getAttribute("href").trimLeft().indexOf("http") !== 0) {
+                element.href = element.href;
+            }
+
+            break;
+        case "IMG":
+            break;
+
+        case "STYLE":
+            break;
+
+        case "LINK":
+            break;
+
+        case "META":
+
+            if (element.getAttribute("http-equiv") && element.getAttribute("http-equiv").toLowerCase() === "content-type") {
+                element.parentNode.removeChild(element);
+            } else if (element.getAttribute("charset")) {
+                element.parentNode.removeChild(element);
+            }
+
+            break;
+
+        case "SCRIPT":
+
+            element.parentNode.removeChild(element);
+            break;
+
+        case "IFRAME":
+        case "FRAME":
+            break;
+
+        case "DIV":
+
+            if (element.id === "ktb_extension_placeholder") {
+                element.parentNode.removeChild(element);
+            }
+
+            break;
+
+        case "APPLET":
+        case "AUDIO":
+        case "VIDEO":
+        case "NOSCRIPT":
+        case "BASE":
+        case "COMMAND":
+        // TODO object 可以引用子页面
+        case "OBJECT":
+        case "EMBED":
+            element.parentNode.removeChild(element);
+            break;
+        default:
+            break;
+    }
+}
+
+
+function fetchFrameContent(iframe, always){
+
+    var token = +new Date();
+
+    callbacks[token] = always;
+
+    if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+            "ktb_extension_child_iframe": token
+        }, "*");
+    }
+
+    // TODO 超时， chrome runInAllFrame 不能在脚本画的 iframe 中执行
+    // 暂时不考虑直接冲进去取， 没有消息回来就先放弃。
+    setTimeout(function(){
+        Analyser.callback({
+            message: "",
+            token: token
+        });
+    }, 5000);
+    
+}
+
+function resolveURI(root, url){
+
+    if (url.indexOf("http") === 0) {
+        return url;
+    } else if (url.indexOf("/") === 0) {
+        return root.split("/").slice(0, 3).join("/") + url;
     } else {
-        background = null;
+        return root.split("/").slice(0, -1).join("/") + "/" + url;
+    }
+}
+
+function formatSelector(rule) {
+
+    rule = rule.trim();
+
+    if (rule === "*") {
+        return rule;
+    } else if (!rule || rule.indexOf("*") === 0) {
+        return "";
+    } else {
+        return rule
+                .replace(/:link|:visited|:hover|:active|:focus|:before|:after|:enabled|:disabled|:checked|::selection/ig, "")
+                .replace('@charset "utf-8";', "");
     }
 
-    if (background) {
-        if (background.indexOf("data") === 0) {
-            element.style.backgroundImage = "url(" + background + ")";
-            d.resolve();
+}
+
+function isUseful(rule) {
+
+    // 0 没用
+    // 1 外层节点用到
+    // 2 剪切的节点用到
+
+    var items, ret = 0;
+
+    try {
+
+        items = returnObject.__clone.querySelectorAll(rule);
+
+        if (items.length) {
+
+            ret = 1;
+
+            for (var i = 0, l = items.length; i < l; i++) {
+                if (returnObject.__target.contains(items[i])) {
+                    ret = 2; break;
+                }
+            }
+
         } else {
-            wget(background, function(data){
-                element.style.backgroundImage = "url(" + data + ")";
-                d.resolve();
-            });
+            ret = 0;
         }
-    } else {
-        d.resolve();
+
+    } catch(e) {
+        console.info(rule);
+        return ret;
     }
+
+    return ret;
+}
+
+function base64EncodeImage(styles, func, root) {
+
+    var url;
+
+    styles = styles.replace(reCssUrl, function(a, f){
+
+        if (f.indexOf('"') === 0 || f.indexOf("'") === 0) {
+            f = f.slice(1, -1);
+        }
+
+        if (f.indexOf("data:") === 0) {
+            return "url(" + f + ")";
+        } else {
+            url = f;
+            return "url(" + f + ")";
+        }
+
+    });
+
+    if (!url) {
+        func(styles);
+    } else {
+        Request.GetImage(resolveURI(root, url), function(data){
+            func(styles.replace(url, data));
+        });
+    }   
+}
+
+function filterStyles(styles, func, root, inline) {
+
+    if (!styles) {
+        return func("");
+    }
+
+    // 没有选择器， 不需要解析， 直接替换
+    if (inline) {
+        styles = CSSOM_HELPER + "{" + styles + "}";
+    }
+
+    var rules;
+
+    try {
+        rules = CSSOM.parse(styles);
+    } catch(e) {
+        console.log(e);
+        rules = e.styleSheet;
+    }
+
+    var deferTree = [];
+
+    rules.cssRules.forEach(function(rule, i, array){
+
+        var defer, url, selector;
+
+        if(rule instanceof CSSOM.CSSImportRule) {
+
+            // TODO
+            // rule.href
+            // rule.media 这个东西和 media 有关
+            
+            defer = Q.defer();
+            url = resolveURI(root, rule.href);
+
+            Request.GetText(url, function(data){
+
+                filterStyles(data, function(styleSheet){
+
+                    array[i] = null;
+
+                    styleSheet.cssRules.reverse().forEach(function(r){
+                        rules.insertRule(r.cssText, i + 1);
+                    });
+
+                    defer.resolve();
+
+                }, root);
+                
+            });
+
+            deferTree.push(defer.promise);
+
+        } else if (rule instanceof CSSOM.CSSFontFaceRule) {
+            rules.cssRules[i] = null;
+        } else if (rule instanceof CSSOM.CSSStyleRule) {
+
+            selector = formatSelector(rule.selectorText);
+
+            var isUsed = selector ? (selector === CSSOM_HELPER ? 2 : isUseful(selector)) : 0;
+
+            if (isUsed === 0) {
+                rules.cssRules[i] = null;
+            } else {
+                for (var i = 0, l = rule.style.length; i < l; i++) {
+
+                    (function(j){
+
+                        var key = rule.style[j];
+                        var value = rule.style[key];
+
+                        if (value.indexOf("expression(") >= 0) {
+                            rule.style[key] = "";
+                        } else if (value.indexOf("url(") >= 0) {
+
+                            if (isUsed === 1) {
+                                rule.style[key] = "";
+                                return;
+                            }
+
+                            var defer = Q.defer();
+                            
+                            base64EncodeImage(value, function(str){
+                                rule.style[key] = str;
+                                defer.resolve();
+                            }, root);
+
+                            deferTree.push(defer.promise);
+                        }
+
+                    })(i);
+                }
+            }
+        }
+
+    });
+
+    Q.allResolved(deferTree).then(function(){
+
+        var rule;
+
+        for (var i = 0; i < rules.cssRules.length; i++) {
+
+            rule = rules.cssRules[i];
+
+            if (!rule) {
+                rules.deleteRule(i);
+                i--;
+            }
+        }
+
+        func(rules);
+    });
+
+}
+
+function formatAttributesAsync(element){
+    
+    var d = Q.defer();
+    var attrs = element.attributes;
+    var node;
+
+    // 删除 onclick 类似事件
+    for (var i = 0, l = attrs.length; i < l; i++) {
+        node = attrs[i].nodeName;
+
+        if (node && node.indexOf("on") === 0) {
+            element.removeAttribute(node);
+            i--; l--;
+        }
+    }
+
+    var styles = element.getAttribute("style");
+
+    filterStyles(styles, function(style){
+
+        if (style) {
+            element.style.cssText = style.toString()
+                            .replace(CSSOM_HELPER, "").trim().slice(1, -1);
+        }
+        
+        d.resolve();
+
+    }, location.href, true);
 
     return d.promise;
 }
 
-function resetCss(element){
-    var style = element.style;
-    var position = getStyle(element, "position");
+function resetElementStyle(element, raw, size){
 
-    if (position !== "static") {
-        position = "relative";
-    }
+    var style = element.style;
+    var position = getStyle(raw, "position");
+
+    if (position !== "static") { position = "relative"; }
 
     style.margin = 0;
     style.outline = 0;
     style.top = 0;
     style.left = 0;
+    style.display = "inline-block";
+    style.padding = 0;
+
+    if (size) {
+        style.width = style.minWidth = size.width + "px";
+        style.height = style.minHeight = size.height + "px";
+    }
 }
 
-function formatElement(element, raw, reset){
-    return Q.allResolved([formatHTML(element), formatCss(element, raw, reset)]);
+function formatElementAsync(element){
+    return Q.allResolved([formatHTMLAsync(element), formatAttributesAsync(element)]);
 }
 
 function getStyle(element, prop){
     return window.getComputedStyle(element, null).getPropertyValue(prop);
 }
 
-function wget(url, always){
-
-    var xhr = new XMLHttpRequest();
-
-    xhr.open("GET", url, true);
-
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-
-            var reader = new FileReader();
-
-            reader.onload = function(e){
-                always(e.target.result);
-            }
-
-            reader.readAsDataURL(xhr.response);
-        }
-    }
-
-    xhr.responseType = "blob";
-    xhr.send();
+function isVisible(element) {
+    return !(getStyle(element, "display") === "none" || 
+        getStyle(element, "visibility") === "hidden" ||
+        getStyle(element, "opacity") === 0);
 }
 
+function getRoot(element){
 
-function recursion_up(root) {
+    while (element.parentNode && element.parentNode !== document) {
+        element = element.parentNode;
+    }
 
-    var defer = Q.defer();
-    var result = root.cloneNode(false),
-        temp, parent,
-        tree = [[result, root]];
+    return element;
+}
 
+function copyStructSync(root) {
+
+    var pointer, clone, temp, parent;
+    var size = { width: root.offsetWidth, height: root.offsetHeight };
+
+    // 向下复制
+    pointer = clone = root.cloneNode(true);
+
+    formatElementSync(clone, root);
+
+    var tree = root.getElementsByTagName("*");
+    var inner_tree = AP.slice.apply(clone.getElementsByTagName("*"));
+
+    for (var i = 0, l = tree.length; i < l; i++) {
+
+        temp = inner_tree[i];
+
+        // 判断是否是隐藏元素已经删除掉
+        if (clone.contains(temp)) {
+            // 删除没用样式，后面还会加回来
+            if (isVisible(tree[i]) && tree[i].tagName !== "LINK" && tree[i].tagName !== "STYLE") {
+                formatElementSync(temp, tree[i]);
+            } else {
+                temp.parentNode.removeChild(temp);
+            }
+        }
+
+    }
+
+    // 向上复制
+    // 
+    
     while(root.parentNode && root.parentNode !== document) {
-        parent = root.parentNode
+
+        parent = root.parentNode;
         temp = parent.cloneNode(false);
-        temp.appendChild(result);
-        result = temp;
-        tree.push([result, parent]);
+
+        if (pointer) {
+            temp.appendChild(pointer);
+        }
+
+        formatElementSync(temp, parent, size);
+        
+        pointer = temp;
         root = parent;
     }
 
-    var deferTree = tree.map(function(item){
-        return formatElement(item[0], item[1], true);
-    });
+    // HEAD 复制
+    // 
+
+    var head = document.head.cloneNode(true);
+
+    tree = document.head.getElementsByTagName("*");
+    inner_tree = AP.slice.apply(head.getElementsByTagName("*"));
+
+    for (var i = 0, l = tree.length; i < l; i++) {
+        formatElementSync(inner_tree[i], tree[i]);
+    }
+
+    // 设置一个替换符，考虑使用 SSI
+    var injectPlaceholder = document.createComment("ktb_extension_inject_placeholder");
+    head.appendChild(injectPlaceholder);
+
+    // 设置 charset
+
+    var element = document.createElement("meta");
+    element.setAttribute("charset", "utf-8");
+    head.insertBefore(element, head.firstElementChild);
+
+    // 新窗口打开
+    var base = document.createElement("base");
+    base.setAttribute("target", "_blank");
+    head.appendChild(base);
+
+    // pointer 已经递归成 <html>
+    pointer.insertBefore(head, pointer.firstElementChild);
+
+
+    // 页面中零散的样式表放到头里面去
+    // 
+    var styles = document.body.querySelectorAll("style,link");
+
+    for (var i = 0, l = styles.length; i < l; i++) {
+        // 这里不能 clone false.
+        temp = styles[i].cloneNode(true);
+        temp.__source = styles[i];
+        head.appendChild(temp);
+    }
+
+
+    return pointer;
+}
+
+function recursionStructAsync(clone, done) {
+
+    var deferTree = [formatElementAsync(clone)];
+    var temp;
+
+    var tree = AP.slice.apply(clone.getElementsByTagName("*"));
+
+    for (var i = 0, l = tree.length; i < l; i++) {
+        temp = tree[i];
+        deferTree.push(formatElementAsync(temp));
+    }
 
     Q.allResolved(deferTree).then(function(){
-        defer.resolve(result);
+        done(clone);
+    });
+}
+
+returnObject.invoke = function(root, done){
+
+    var pointer = returnObject.__target = copyStructSync(root);
+    var clone = returnObject.__clone = getRoot(pointer);
+
+    recursionStructAsync(clone, function(re){
+        done(re);
     });
 
-    return defer.promise;
-}
-
-function recursion_down(root) {
-
-}
-
-function load_css(){
-
-}
-
-
-returnObject.invoke = function(root, done, fail){
-    recursion_up(root)
-    .then(function(a){
-
-        var win = window.open("about:blank");
-        win.document.write(a.outerHTML);
-
-    }, function(){
-        alert("error");
-    });
 };
 
-returnObject.XPath = function(element) {
-    return getXPathFromElement(element);
+returnObject.callback = function(message){
+    
+    var callback = callbacks[message.token];
+
+    // 用完删掉， 省得重复执行
+    callbacks[message.token] = null;
+
+    callback && callback(message.message);
 };
 
 return returnObject;

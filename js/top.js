@@ -3,21 +3,21 @@ var HtmlCollector = (function(win, doc, html, body){
     var returnObject = {};
     var requestAnimationFrame = win.requestAnimationFrame || win.webkitRequestAnimationFrame;
     var stopEventList = ("mousedown mouseup click dbclick").split(" ");
-    // var excludeTagList = ("object iframe frame frameset applet audio video embed").split(" ");
     var viewSize;
     var pushstack = [];
 
     var innerStyle =  ["<style>", 
             "#ktb_extension_placeholder{  }",
-            "#ktb_helper{ border-radius:2px;display:none;cursor:pointer;position:absolute;z-index:10000;background-color:red;opacity:0.5; }",
-            "#ktb_helper_tools{ width:auto;display:none;z-index:10000;border-radius:3px;padding:4px;position:absolute;background-color: #006dcc;background-image: -webkit-gradient(linear, 0 0, 0 100%, from(#0088cc), to(#0044cc));border-color: rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.25); }",
-            "#ktb_helper_tools a{ color:#fff;font-size:12px;line-height:1.2;padding:2px 4px;float:left;border-radius:3px; }",
+            "#ktb_helper{ border-radius:2px;display:none;cursor:pointer;position:absolute;z-index:9999999;background-color:red;opacity:0.5; }",
+            "#ktb_helper_tools{ width:auto;display:none;z-index:9999999;border-radius:3px;padding:4px;position:absolute;background-color: #006dcc;background-image: -webkit-gradient(linear, 0 0, 0 100%, from(#0088cc), to(#0044cc));border-color: rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.25); }",
+            "#ktb_helper_tools a{ text-decoration:none;color:#fff;font-size:12px;line-height:1.2;padding:2px 4px;float:left;border-radius:3px; }",
             "#ktb_helper_tools a:hover{ background-color:#fff;text-decoration:none;cursor:pointer;color:#006dcc; }",
+            "#ktb_helper_tools a.disabled{ background-color:#999; color:#777;}",
             "#ktb_helper_tools b{ left:50%;margin-left:-6px;position:absolute;bottom:-12px;border-right: transparent 6px solid; border-bottom: transparent 6px solid; border-left: transparent 6px solid; width: 0px; border-top: #0044cc 6px solid; height: 0px; }",
             "#ktb_helper_tools.top b{ left:50%;margin-left:-6px;position:absolute;top:-12px;border-right: transparent 6px solid; border-top: transparent 6px solid; border-left: transparent 6px solid; width: 0px; border-bottom: #0088cc 6px solid; height: 0px; }",
             "</style>"].join("\n");
 
-    var innerHTML = "<div id=\"ktb_helper\"></div>" +
+    var innerHTML = "<div id=\"ktb_helper_hidden\" style=\"display:none;\"></div><div id=\"ktb_helper\"></div>" +
             "<div id=\"ktb_helper_tools\" class=\"top\"><a>重选</a><a>扩大</a><a>后退</a><a>关闭</a><a>新窗口</a><a>预览</a><b></b></div>";
 
     returnObject.container = doc.createElement("div");
@@ -29,6 +29,7 @@ var HtmlCollector = (function(win, doc, html, body){
 
     var helper = doc.getElementById("ktb_helper");
     var tools = doc.getElementById("ktb_helper_tools");
+    var hiddenField = doc.getElementById("ktb_helper_hidden");
     var selectedTarget = null;
     var status = 0, temp;
 
@@ -45,7 +46,7 @@ var HtmlCollector = (function(win, doc, html, body){
         var target = e.target;
 
         if (target == toolsList[0]) {
-            returnObject.start();
+            returnObject.html();
         } else if (target == toolsList[1]) {
             enlarger();
         } else if (target == toolsList[2]) {
@@ -58,11 +59,25 @@ var HtmlCollector = (function(win, doc, html, body){
             }
 
         } else if (target == toolsList[3]) {
-            clear();
+            returnObject.clear();
         } else if (target == toolsList[4]) {
             openFrame(selectedTarget);
         } else if (target == toolsList[5]) {
-            Analyser.invoke(selectedTarget);
+
+            if (target.className === "disabled") {
+                return;
+            }
+
+            temp = selectedTarget.tagName === "HTML" ? body : selectedTarget;
+
+            target.className = "disabled";
+
+            Analyser.invoke(temp, function(a){
+                chrome.runtime.sendMessage({ 
+                    analyse_result: a.outerHTML,
+                    location_href: location.href
+                });
+            });
         }
 
     }, true);
@@ -125,7 +140,7 @@ var HtmlCollector = (function(win, doc, html, body){
         
         evt.initMouseEvent("mouseover", true, true);
 
-        returnObject.start();
+        returnObject.html();
 
         target.dispatchEvent(evt);
 
@@ -181,6 +196,8 @@ var HtmlCollector = (function(win, doc, html, body){
         } else {
             tools.querySelector("a:nth-child(5)").style.display = "none";
         }
+
+        tools.querySelector("a:nth-child(6)").removeAttribute("class");
     }
 
     function stop(){
@@ -197,7 +214,7 @@ var HtmlCollector = (function(win, doc, html, body){
         status = 1;
     }
 
-    function clear(){
+    returnObject.clear = function(){
 
         win.postMessage("ktb_extension_child_free", "*");
 
@@ -228,7 +245,7 @@ var HtmlCollector = (function(win, doc, html, body){
         return ret;
     };
 
-    returnObject.start = function(){
+    returnObject.html = function(){
 
         if (status === 2) { return; }
 
@@ -240,6 +257,14 @@ var HtmlCollector = (function(win, doc, html, body){
         html.addEventListener("mouseover", handleMouseover, true);
 
         status = 2;
+    };
+
+    returnObject.whole = function(){
+        select(document.body);
+    };
+
+    returnObject.text = function(){
+        alert("还没实现，敬请期待");
     };
 
     returnObject.hover = function(elem){
@@ -258,19 +283,60 @@ var HtmlCollector = (function(win, doc, html, body){
         stop();
     };
 
+    returnObject.image = function(data){
+
+        var form = document.createElement("form");
+        var random = "ktb_helper_rand_" + (+new Date());
+        var temp;
+
+        form.setAttribute("method", "post");
+        form.acceptCharset = "utf-8";
+        form.setAttribute("action", data.origin + "pin/add");
+        form.setAttribute("target", random);
+        hiddenField.appendChild(form);
+
+        for (var d in data) {
+            if (data.hasOwnProperty(d)) {
+                temp = document.createElement("input");
+                temp.setAttribute("name", d);
+                temp.setAttribute("value", data[d]);
+                form.appendChild(temp);    
+            }
+        }
+
+        window.open("about:blank", random, 'scrollbars=no,menubar=no,height=480,width=600,resizable=yes,toolbar=no,status=no');
+
+        form.submit();
+    };
+
     return returnObject;
 
 })(window, document, document.documentElement, document.body);
 
 // 插件通信 sendMessage, 会在所有 frame 中执行。
-chrome.extension.onMessage.addListener(function(message){
-    switch(message) {
-        case "ktb_extension_start":
-            HtmlCollector.start();
+chrome.runtime.onMessage.addListener(function(message, sender, sendMessage){
+
+    HtmlCollector.clear();
+
+    switch(message.message) {
+        case "ktb_extension_content_start":
+            HtmlCollector.html();
+            break;
+        case "ktb_extension_whole_start":
+            HtmlCollector.whole();
+            break;
+        case "ktb_extension_text_start":
+            HtmlCollector.text();
+            break;
+        case "ktb_extension_save_image":
+            HtmlCollector.image(message.data);
             break;
         default:
             break;
     }
+
+    sendMessage();
+    return true;
 });
 
 

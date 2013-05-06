@@ -14,6 +14,18 @@
         }
     }
 
+    function getFrameByWindowObject(win){
+        var frames = doc.querySelectorAll("iframe,frame,object");
+
+        for (var i = 0, len = frames.length; i < len; i++) {
+            if (win === frames[i].contentWindow) {
+                return frames[i];
+            }
+        }
+
+        return null;
+    }
+
 
     html.addEventListener("mouseover", function(){
         if (win.parent != win) {
@@ -30,19 +42,13 @@
     win.addEventListener("message", function(e){
         var message = e.data;
         var source = e.source;
-        var frames, from;
+        var from;
 
         if (message == "ktb_extension_child_hover") {
 
             if (win.parent == win) {
 
-                frames = doc.querySelectorAll("iframe,frame,object");
-
-                for (var i = 0, len = frames.length; i < len; i++) {
-                    if (source === frames[i].contentWindow) {
-                        from = frames[i];
-                    }
-                }
+                from = getFrameByWindowObject(source);
 
                 if (from) {
                     HtmlCollector.hover(from);
@@ -78,6 +84,25 @@
 
             sendMessaget2ChildFrames("ktb_extension_child_free");
 
+        } else if (message && message.hasOwnProperty && message.hasOwnProperty("ktb_extension_child_iframe")) {
+
+            /* invoke 向上找不能传 html, 如果 html 就不好向 DOM append*/
+            Analyser.invoke(body, function(a){
+                win.parent.postMessage({
+                    "ktb_extension_child_content": a.outerHTML,
+                    "token": message.ktb_extension_child_iframe
+                }, "*");
+            }, function(){
+                win.parent.postMessage({
+                    "ktb_extension_child_content": "",
+                    "token": message.ktb_extension_child_iframe
+                }, "*");
+            });
+        } else if (message && message.hasOwnProperty && message.hasOwnProperty("ktb_extension_child_content")) {
+            Analyser.callback({
+                message: message.ktb_extension_child_content,
+                token: message.token
+            });
         }
 
     });

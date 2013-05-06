@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>预览页面</title>
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width">
+  <style>
+    * { margin: 0; padding: 0; }
+    #preview_frame { width: 100%; height: 100%; }
+
+    .header{
+        background:#23658b;
+        background:-webkit-linear-gradient(top, #23658b 0%, #1c506e 100%);
+        background:linear-gradient(to bottom, #23658b 0%, #1c506e 100%);
+        height:30px;
+        overflow:hidden;
+        padding:5px 10px;
+        position:relative;
+    }
+
+    .header-btn{
+        background:#2b7cab;
+        background:-webkit-linear-gradient(top, #2b7cab 0%, #28739f 100%);
+        background:linear-gradient(to bottom, #2b7cab 0%, #28739f 100%);
+        -webkit-box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 1px rgba(0, 0, 0, 0.35);
+        box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 1px rgba(0, 0, 0, 0.35);
+    }
+
+    .header-btn{
+        border-radius:3px;
+        -webkit-touch-callout:none;
+        -webkit-user-select:none;
+        color:#e3e3e3;
+        display:block;
+        float:left;
+        font-size:13px;
+        font-weight:bold;
+        height:30px;
+        line-height:30px;
+        padding:0 10px;
+        position:relative;
+        min-width:30px;
+        text-decoration:none;
+        text-shadow:0 1px rgba(0, 0, 0, 0.4);
+        text-align: center;
+    }
+
+    .header-btn:hover{
+        background:#3291c8;
+        background:-webkit-linear-gradient(top, #3291c8 0%, #2f88bc 100%);
+        background:linear-gradient(to bottom, #3291c8 0%, #2f88bc 100%);
+        -webkit-box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 1px rgba(0, 0, 0, 0.25);
+        box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 1px rgba(0, 0, 0, 0.25);
+        color:#eee;
+    }
+
+    .header-left{
+        float: left;
+    }
+
+    .header-right{
+        float: right;
+    }
+
+    .member{
+        background-color:#ccc;
+        border:1px solid #B9B9B9;
+        color:#444;
+        display:block;
+        float:left;
+        height:30px;
+        margin:0 1px 1px 0;
+        overflow:hidden;
+        position:relative;
+        width:30px;
+        cursor:pointer;
+        -webkit-touch-callout:none;
+        -webkit-user-select:none;
+        z-index:0;
+        text-decoration:none;
+        margin-top: -1px;
+    }
+
+    .notice_tiper {
+        margin: 0 auto;
+        max-width: 300px;
+        font-size: 15px;
+        height: 40px;
+        margin-top: -5px;
+        text-align: center;
+        line-height: 40px;
+        position: relative;
+    }
+
+    .error { background: #d14836; color: #fff; }
+    .notice { background: #f9edbe; color: #000; }
+
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+        <a id="save_html" class="header-btn" href="#"> <span class="header-btn-text">保存</span> </a>
+    </div>
+    
+    <div class="header-right">
+        
+    </div>
+    <div id="notice_tiper" class="notice_tiper notice" style="top:-40px;"></div>
+  </div>
+  <iframe id="preview_frame" src="about:blank" frameborder="0"></iframe>
+</body>
+<script type="text/javascript" src="js/tools/jquery.js"></script>
+<script type="text/javascript" src="js/preview.js"></script>
+</html>

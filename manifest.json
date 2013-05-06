@@ -1,7 +1,6 @@
 {
-  // Required
   "name": "KANTUBAN.COM",
-  "version": "0.0.1",
+  "version": "0.1.4",
   "manifest_version": 2,
 
   "icons": {
@@ -10,7 +9,6 @@
     "48": "icons/icon48.png"
   },
 
-  // Recommended
   "description": "看图班・最专业的旅行相册",
   "browser_action": {
     "default_icon": {
@@ -25,22 +23,31 @@
     "cookies",
     "tabs",
     "http://*/*",
-    "https://*/*"
+    "https://*/*",
+    "contextMenus",
+    "alarms"
   ],
+
+  "background": {
+    "scripts": ["js/event_page.js"],
+    "persistent": false
+  },
 
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["js/frames.js", "js/Q.js", "js/document_analyse.js"],
+      "js": ["js/tools/CSSOM.js", "js/tools/Request.js", "js/frames.js", "js/tools/Q.js", "js/document_analyse.js"],
       "run_at": "document_end",
       "all_frames": true
     },
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["js/top.js"],
+      "js": ["js/top.js", "js/capture_page.js"],
       "run_at": "document_end"
     }
   ],
+
+  "web_accessible_resources": [ "css/capture_page.css" ],
 
   "options_page": "preferences.html"
 }
