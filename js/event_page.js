@@ -25,14 +25,10 @@ chrome.alarms.create({ periodInMinutes: 5 });
 
 
 
-
-
-
-
 var sendMessageToActiveTabOfCurrentWindow = function(message, sendMessage) {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs){
         chrome.tabs.sendMessage(tabs[0].id, message, function(m){
-            sendMessage(m);
+            sendMessage && sendMessage(m);
         });
     });
 };
@@ -102,6 +98,23 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
         chrome.tabs.create({ url: "preview.html" });
         sendResponse();
 
+    } else if (message.image_info) {
+
+        var code = "";
+
+        code += 'var e = document.createElement("input");';
+        code += 'e.type = "hidden";e.id = "ktb_extension_image_message";';
+        code += 'e.value = \'' + JSON.stringify(message) + '\';';
+        code += 'document.documentElement.appendChild(e);'
+
+        chrome.tabs.create({ url: baseServerLocation + "upload" }, function(tab){
+            chrome.tabs.executeScript(tab.id, { code: code, runAt: "document_start" }, function() {
+                sendResponse();
+            });
+        });
+
+    } else if (message.message === "baseServerLocation") {
+        sendResponse(baseServerLocation);
     }
 
     return true;
@@ -112,19 +125,10 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 function getClickHandler() {
 
     return function(info, tab) {
-        var data = {
-            media: info.srcUrl,
-            url: info.pageUrl,
-            alt: "",
-            ref: "",
-            title: tab.title,
-            is_video: false,
-            origin: baseServerLocation
-        };
 
         sendMessageToActiveTabOfCurrentWindow({
             message: "ktb_extension_save_image",
-            data: data
+            data: info
         });
     };
 };
@@ -132,11 +136,14 @@ function getClickHandler() {
 /**
  * Create a context menu which will only show up for images.
  */
-chrome.contextMenus.create({
-    "id" : baseServerLocation,
-    "title" : "采集到看图班",
-    "type" : "normal",
-    "contexts" : ["image"]
-});
 
-chrome.contextMenus.onClicked.addListener(getClickHandler());
+chrome.contextMenus.removeAll(function(){
+    chrome.contextMenus.create({
+        "id" : baseServerLocation,
+        "title" : "采集到看图班",
+        "type" : "normal",
+        "contexts" : ["image"]
+    });
+
+    chrome.contextMenus.onClicked.addListener(getClickHandler());
+});

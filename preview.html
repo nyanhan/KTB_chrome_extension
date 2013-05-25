@@ -6,6 +6,7 @@
   <title>预览页面</title>
   <meta name="description" content="">
   <meta name="viewport" content="width=device-width">
+  <link rel="stylesheet" type="text/css" href="css/capture_page.css">
   <style>
     * { margin: 0; padding: 0; }
     #preview_frame { width: 100%; height: 100%; }
@@ -26,6 +27,7 @@
         background:linear-gradient(to bottom, #2b7cab 0%, #28739f 100%);
         -webkit-box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 1px rgba(0, 0, 0, 0.35);
         box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 1px rgba(0, 0, 0, 0.35);
+        margin-right: 10px;
     }
 
     .header-btn{
@@ -96,12 +98,14 @@
 
     .error { background: #d14836; color: #fff; }
     .notice { background: #f9edbe; color: #000; }
+    .hide { display: none; }
 
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-left">
+        <a id="jcrop" class="header-btn hide" href="#"> <span class="header-btn-text">裁剪</span> </a>
         <a id="save_html" class="header-btn" href="#"> <span class="header-btn-text">保存</span> </a>
     </div>
     
@@ -113,5 +117,8 @@
   <iframe id="preview_frame" src="about:blank" frameborder="0"></iframe>
 </body>
 <script type="text/javascript" src="js/tools/jquery.js"></script>
+<script type="text/javascript" src="js/tools/Request.js"></script>
+<script type="text/javascript" src="js/tools/Upload.js"></script>
+<script type="text/javascript" src="js/tools/crop.js"></script>
 <script type="text/javascript" src="js/preview.js"></script>
 </html>

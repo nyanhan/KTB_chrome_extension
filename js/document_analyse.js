@@ -392,10 +392,11 @@ function filterStyles(styles, func, root, inline) {
                             rule.style[key] = "";
                         } else if (value.indexOf("url(") >= 0) {
 
-                            if (isUsed === 1) {
-                                rule.style[key] = "";
-                                return;
-                            }
+                            // 外层不要背景图
+                            // if (isUsed === 1) {
+                            //     rule.style[key] = "";
+                            //     return;
+                            // }
 
                             var defer = Q.defer();
                             
@@ -511,12 +512,12 @@ function getRoot(element){
 function copyStructSync(root) {
 
     var pointer, clone, temp, parent;
-    var size = { width: root.offsetWidth, height: root.offsetHeight };
+    var size = { width: root.scrollWidth, height: root.scrollHeight };
 
     // 向下复制
     pointer = clone = root.cloneNode(true);
 
-    formatElementSync(clone, root);
+    formatElementSync(clone, root, size);
 
     var tree = root.getElementsByTagName("*");
     var inner_tree = AP.slice.apply(clone.getElementsByTagName("*"));
@@ -556,7 +557,11 @@ function copyStructSync(root) {
     }
 
     // HEAD 复制
-    // 
+    //
+    
+    if (!document.head) {
+        return clone;
+    }
 
     var head = document.head.cloneNode(true);
 
@@ -567,7 +572,7 @@ function copyStructSync(root) {
         formatElementSync(inner_tree[i], tree[i]);
     }
 
-    // 设置一个替换符，考虑使用 SSI
+    // TODO 设置一个替换符，考虑使用 SSI
     var injectPlaceholder = document.createComment("ktb_extension_inject_placeholder");
     head.appendChild(injectPlaceholder);
 
@@ -598,7 +603,7 @@ function copyStructSync(root) {
     }
 
 
-    return pointer;
+    return clone;
 }
 
 function recursionStructAsync(clone, done) {
@@ -619,6 +624,12 @@ function recursionStructAsync(clone, done) {
 }
 
 returnObject.invoke = function(root, done){
+
+    if (root.tagName === "IMG") {
+        return formatHTMLAsync(root).then(function(){
+            done(root, "image");
+        });
+    }
 
     var pointer = returnObject.__target = copyStructSync(root);
     var clone = returnObject.__clone = getRoot(pointer);

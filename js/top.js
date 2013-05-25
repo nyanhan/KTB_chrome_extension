@@ -6,30 +6,36 @@ var HtmlCollector = (function(win, doc, html, body){
     var viewSize;
     var pushstack = [];
 
-    var innerStyle =  ["<style>", 
-            "#ktb_extension_placeholder{  }",
-            "#ktb_helper{ border-radius:2px;display:none;cursor:pointer;position:absolute;z-index:9999999;background-color:red;opacity:0.5; }",
-            "#ktb_helper_tools{ width:auto;display:none;z-index:9999999;border-radius:3px;padding:4px;position:absolute;background-color: #006dcc;background-image: -webkit-gradient(linear, 0 0, 0 100%, from(#0088cc), to(#0044cc));border-color: rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.1) rgba(0, 0, 0, 0.25); }",
-            "#ktb_helper_tools a{ text-decoration:none;color:#fff;font-size:12px;line-height:1.2;padding:2px 4px;float:left;border-radius:3px; }",
-            "#ktb_helper_tools a:hover{ background-color:#fff;text-decoration:none;cursor:pointer;color:#006dcc; }",
-            "#ktb_helper_tools a.disabled{ background-color:#999; color:#777;}",
-            "#ktb_helper_tools b{ left:50%;margin-left:-6px;position:absolute;bottom:-12px;border-right: transparent 6px solid; border-bottom: transparent 6px solid; border-left: transparent 6px solid; width: 0px; border-top: #0044cc 6px solid; height: 0px; }",
-            "#ktb_helper_tools.top b{ left:50%;margin-left:-6px;position:absolute;top:-12px;border-right: transparent 6px solid; border-top: transparent 6px solid; border-left: transparent 6px solid; width: 0px; border-bottom: #0088cc 6px solid; height: 0px; }",
-            "</style>"].join("\n");
+    var innerStyle = 
+        '<div id="ktb_extension_fix" style="display:none;">' +
+            '<div class="ktb_navbar">双击图片可以上传/重传</div>' +
+            '<a href="javascript:;" class="ktb_close">+</a>' +
+            '<a href="javascript:;" class="ktb_fold">-</a>' +
+            '<div class="ktb_images">' +
+            '</div>' +
+            '<div class="ktb_navbar"><span class="ktb_error"></span><a href="javascript:;" class="ktb_button">保存</a></div>' +
+        '</div>';
 
     var innerHTML = "<div id=\"ktb_helper_hidden\" style=\"display:none;\"></div><div id=\"ktb_helper\"></div>" +
-            "<div id=\"ktb_helper_tools\" class=\"top\"><a>重选</a><a>扩大</a><a>后退</a><a>关闭</a><a>新窗口</a><a>预览</a><b></b></div>";
+            "<div id=\"ktb_helper_tools\" class=\"top\" style=\"display:none;\"><a>重选</a><a>扩大</a><a>后退</a><a>关闭</a><a>新窗口</a><a>预览</a><b></b></div>";
 
     returnObject.container = doc.createElement("div");
-
     returnObject.container.id = "ktb_extension_placeholder";
     returnObject.container.innerHTML = innerStyle + innerHTML;
 
     body.insertBefore(returnObject.container, body.firstChild);
 
+    var style = doc.createElement("link");
+    
+    style.type = 'text/css';
+    style.rel = 'stylesheet';
+    style.href = chrome.extension.getURL("css/capture_page.css");
+    returnObject.container.appendChild(style);
+
     var helper = doc.getElementById("ktb_helper");
     var tools = doc.getElementById("ktb_helper_tools");
     var hiddenField = doc.getElementById("ktb_helper_hidden");
+    var ktbFix = doc.getElementById("ktb_extension_fix");
     var selectedTarget = null;
     var status = 0, temp;
 
@@ -37,7 +43,48 @@ var HtmlCollector = (function(win, doc, html, body){
 
     var toolsList = tools.getElementsByTagName("a");
 
+    // 有些网站禁止右键
+    document.body.addEventListener("contextmenu", function(e){ e.stopPropagation(); });
+
+    ktbFix.addEventListener("click", function(e){
+
+        if (e.target.className === "ktb_close") {
+
+            ktbFix.style.display = "none";
+            ktbFix.querySelector(".ktb_images").innerHTML = "";
+
+        } else if (e.target.className === "ktb_fold") {
+
+            var image_container = ktbFix.querySelector(".ktb_images");
+
+            if (image_container.style.display === "none") {
+                image_container.style.display = "";
+            } else {
+                image_container.style.display = "none";
+            }
+            
+        } else if (e.target.className === "ktb_button") {
+
+            var images = ktbFix.getElementsByClassName("ktb_one");
+            var ins = [];
+
+            for (var i = 0, l = images.length; i < l; i++) {
+                if (images[i].__info) {
+                    ins.push(images[i].__info);
+                }
+            }
+
+            if (ins) {
+                chrome.runtime.sendMessage({ image_info: ins, location_href: location.href }, function(){
+                    ktbFix.style.display = "none";
+                    ktbFix.querySelector(".ktb_images").innerHTML = "";
+                });
+            }
+        }
+    });
+
     html.addEventListener("click", function(e){
+
         if (status == 2) {
             stop();
             return;
@@ -72,11 +119,25 @@ var HtmlCollector = (function(win, doc, html, body){
 
             target.className = "disabled";
 
-            Analyser.invoke(temp, function(a){
-                chrome.runtime.sendMessage({ 
-                    analyse_result: a.outerHTML,
-                    location_href: location.href
-                });
+            Analyser.invoke(temp, function(a, type){
+
+                if (type === "image") {
+                    
+                    chrome.runtime.sendMessage({
+                        message: "capture_data",
+                        data: a.src,
+                        location_href: location.href
+                    });
+
+                } else {
+
+                    chrome.runtime.sendMessage({ 
+                        analyse_result: a.outerHTML,
+                        location_href: location.href
+                    });
+
+                }
+
             });
         }
 
@@ -105,18 +166,15 @@ var HtmlCollector = (function(win, doc, html, body){
         var style = helper.style;
 
         if (target.nodeType === 1 ) {
+            
+            var offset = target.getBoundingClientRect();
+            var l = body.scrollLeft, t = body.scrollTop;
 
-            requestAnimationFrame(function(){
-                var offset = target.getBoundingClientRect();
-                var l = body.scrollLeft, t = body.scrollTop;
-
-                style.left = offset.left + l + "px";
-                style.top = offset.top + t + "px";
-                style.width = offset.width + "px";
-                style.height = offset.height + "px";
-                style.display = "block";
-
-            });
+            style.left = offset.left + l + "px";
+            style.top = offset.top + t + "px";
+            style.width = offset.width + "px";
+            style.height = offset.height + "px";
+            style.display = "block";
 
             selectedTarget = target;
 
@@ -139,18 +197,12 @@ var HtmlCollector = (function(win, doc, html, body){
         var evt = doc.createEvent("MouseEvents");
         
         evt.initMouseEvent("mouseover", true, true);
-
         returnObject.html();
-
         target.dispatchEvent(evt);
 
-        setTimeout(function(){
-            evt = doc.createEvent("MouseEvents");
-            evt.initMouseEvent("click", true, true);
-            target.dispatchEvent(evt);
-        }, 16);
-
-        selectedTarget = target;
+        evt = doc.createEvent("MouseEvents");
+        evt.initMouseEvent("click", true, true);
+        target.dispatchEvent(evt);
 
     }
 
@@ -224,7 +276,7 @@ var HtmlCollector = (function(win, doc, html, body){
 
         pushstack = [];
         status = 0;
-    }
+    };
 
 
     returnObject.getViewSize = function(force){
@@ -283,30 +335,108 @@ var HtmlCollector = (function(win, doc, html, body){
         stop();
     };
 
-    returnObject.image = function(data){
+    function createPreview(info, text){
 
-        var form = document.createElement("form");
-        var random = "ktb_helper_rand_" + (+new Date());
-        var temp;
+        text = text || "上传中";
 
-        form.setAttribute("method", "post");
-        form.acceptCharset = "utf-8";
-        form.setAttribute("action", data.origin + "pin/add");
-        form.setAttribute("target", random);
-        hiddenField.appendChild(form);
+        var container = document.getElementById("ktb_extension_fix");
+        var imagesContainer = container.querySelector(".ktb_images");
+        var image = document.createElement("div");
+        var size = text.split("x");
+        var cls = "";
 
-        for (var d in data) {
-            if (data.hasOwnProperty(d)) {
-                temp = document.createElement("input");
-                temp.setAttribute("name", d);
-                temp.setAttribute("value", data[d]);
-                form.appendChild(temp);    
-            }
+        if (size[1] && parseInt(size[0], 10) < parseInt(size[1], 10)) {
+            cls = "ktb_v";
         }
 
-        window.open("about:blank", random, 'scrollbars=no,menubar=no,height=480,width=600,resizable=yes,toolbar=no,status=no');
+        image.className = "ktb_one";
+        image.innerHTML = '<img class="' + cls + '" src="' + info.srcUrl + '"><span>' + text + '</span>';
 
-        form.submit();
+        imagesContainer.appendChild(image);
+
+        container.style.display = "block";
+
+        image.addEventListener("dblclick", function(){
+            image.querySelector("span").innerHTML = "上传中";
+            uploadOnePreview(info, image);
+        }, false);
+
+        return image;
+
+    }
+
+    function uploadOnePreview(info, image) {
+
+        if (!info.srcUrl) {
+            image.querySelector("span").innerHTML = "空白图片";
+            return;
+        } else if (info.srcUrl.indexOf("data:") === 0) {
+            Upload.uploadImage(info.srcUrl, function(d){
+                image.querySelector("span").innerHTML = '<span style="background-color:lightgreen;">上传成功</span>';
+                image.__info = JSON.parse(d);
+            }, function(message){
+                image.querySelector("span").innerHTML = message;
+            });
+        } else {
+            Request.GetImage(info.srcUrl, function(data){
+
+                Upload.uploadImage(data, function(d){
+                    image.querySelector("span").innerHTML = '<span style="background-color:lightgreen;">上传成功</span>';;
+                    image.__info = JSON.parse(d);
+                }, function(message){
+                    image.querySelector("span").innerHTML = message;
+                });
+
+            }, function(){
+                image.querySelector("span").innerHTML = "下载失败";
+            });
+        }
+
+    }
+
+    returnObject.image = function(info){
+
+        var one = createPreview(info);
+
+        uploadOnePreview(info, one);
+
+    };
+
+    returnObject.imageSelect = function(){
+
+        var images = document.getElementsByTagName("img");
+        var temp;
+        var result = {};
+
+        for (var i = 0, l = images.length; i < l; i++) {
+
+            temp = images[i];
+
+            if (!temp.width || temp.width < 204) {
+                continue;
+            }
+
+            if (!temp.height || temp.height < 136) {
+                continue;
+            }
+
+            if (!temp.src) {
+                continue;
+            }
+
+            result[temp.src] = temp;
+        }
+
+        var keys = Object.keys(result);
+
+        if (keys.length === 0) {
+            return alert("没有发现尺寸在 204x136 以上的图片");
+        }
+
+        keys.forEach(function(item, i){
+            createPreview({ srcUrl: item }, result[item].width + " x " + result[item].height);
+        });
+
     };
 
     return returnObject;
@@ -325,12 +455,14 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendMessage){
         case "ktb_extension_whole_start":
             HtmlCollector.whole();
             break;
-        case "ktb_extension_text_start":
-            HtmlCollector.text();
+        case "ktb_extension_image_start":
+            HtmlCollector.imageSelect();
             break;
         case "ktb_extension_save_image":
             HtmlCollector.image(message.data);
             break;
+        case "ktb_extension_modify_page":
+            document.documentElement.contentEditable = true;
         default:
             break;
     }

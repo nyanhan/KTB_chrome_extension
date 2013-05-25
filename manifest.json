@@ -1,6 +1,6 @@
 {
   "name": "KANTUBAN.COM",
-  "version": "0.1.4",
+  "version": "0.4.0",
   "manifest_version": 2,
 
   "icons": {
@@ -42,12 +42,11 @@
     },
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["js/top.js", "js/capture_page.js"],
+      "js": ["js/tools/Upload.js", "js/tools/crop.js", "js/top.js", "js/page_context.js", "js/capture_page.js"],
       "run_at": "document_end"
     }
   ],
 
-  "web_accessible_resources": [ "css/capture_page.css" ],
-
-  "options_page": "preferences.html"
+  "options_page": "preferences.html",
+  "web_accessible_resources": ["css/capture_page.css"]
 }

@@ -1,12 +1,13 @@
 var backgroundPage;
-var upyun_server;
-var upload_type;
 var base_url;
+var global_canvas;
+var post_data;
 
 chrome.runtime.getBackgroundPage(function(background){
 
     backgroundPage = background;
     base_url = background.baseServerLocation;
+    post_data = background.capturedContent;
 
     backgroundPage.getKantubanUserInfo(function(info){
         var info_container = $('.header-right')[0];
@@ -22,12 +23,8 @@ chrome.runtime.getBackgroundPage(function(background){
 
     if (backgroundPage.type === "html") {
         handleHTMLPreview(backgroundPage);
-        upyun_server = "http://v0.api.upyun.com/widget/";
-        upload_type = "widget";
     } else if (backgroundPage.type === "image") {
         handleImagePreview(backgroundPage);
-        upyun_server = "http://v0.api.upyun.com/widget/";
-        upload_type = "widget";
     }
 
 });
@@ -39,13 +36,31 @@ var resizeHandler = function(){
 function handleHTMLPreview(background){
     var preview_frame = $("#preview_frame")[0];
 
-    preview_frame.srcdoc = background.capturedContent;
+    preview_frame.contentDocument.write(background.capturedContent);
 
     window.addEventListener("resize", resizeHandler, false);
     resizeHandler();
 }
 
+function createCanvas(){
+
+    if (global_canvas) {
+        return global_canvas;
+    }
+
+    var canvas = document.createElement("canvas");
+
+    canvas.style.display = "none";
+
+    document.body.appendChild(canvas);
+
+    global_canvas = canvas;
+
+    return canvas;
+}
+
 function handleImagePreview(background) {
+
     $("#preview_frame").remove();
 
     var preview_image = $("<img id=\"preview_image\" />");
@@ -53,14 +68,37 @@ function handleImagePreview(background) {
     $("body").append(preview_image);
 
     preview_image.prop("src", background.capturedContent);
+
+    $("#jcrop").show();
+
+    var cp = Crop.init(preview_image[0], {
+
+        onselect: function(sx, sy, ex, ey) {
+
+            var canvas = createCanvas();
+
+            canvas.width = ex - sx;
+            canvas.height = ey - sy;
+
+            var ctx = canvas.getContext("2d");
+
+            ctx.drawImage(preview_image[0], -sx, -sy);
+
+            var dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+
+            preview_image.prop("src", dataUrl);
+
+            post_data = dataUrl;
+        }
+    });
+
+    $("#jcrop").on("click", function(){
+        cp.showAt(20, 20, 200, 100);
+    });
 }
-
-
-
 
 var save_html = $("#save_html");
 var notice_tiper = $("#notice_tiper");
-var upyun_token, uploading = false;
 var timer = 0;
 
 function server_error(mes) {
@@ -99,15 +137,6 @@ function server_notice(mes) {
     }, 5000);
 }
 
-function stopXHR(xhr) {
-    if (xhr) {
-        xhr.upload.onerror = xhr.onerror = xhr.onload = null;
-        xhr.upload.onprogress = xhr.onabort = xhr.upload.onabort = null;   
-    }
-
-    uploading = false;
-}
-
 var onUploadSuccess = function(data) {
     var d = JSON.parse(data);
 
@@ -136,118 +165,19 @@ var onUploadSuccess = function(data) {
     }
 };
 
-function buildBlobContent(dataURI){
-
-    if (backgroundPage.type === "image") {
-        var byteString = atob(dataURI.split(',')[1]);
-
-        var length = byteString.length,
-            content = new Uint8Array(length);
-
-        for (var i = 0; i < length; i++) {
-            content[i] = byteString.charCodeAt(i);
-        }
-
-        return new Blob([content.buffer], { "type" : "image/png" })
-
-    } else {
-        return new Blob([dataURI], { type: "text/html" });
-    }
-}
-
-function startUpload() {
-
-    if (uploading) {
-        return;
-    } else {
-        uploading = true;
-    }
-
-    var xhr = new XMLHttpRequest();
-
-    xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-            server_notice(parseInt((e.loaded / e.total) * 100, 10) + "%");
-        }
-    };
-
-    xhr.upload.onerror = function(){
-        server_error("上传过程网络异常");
-        stopXHR(xhr);
-    };
-
-    xhr.upload.onabort = function(){
-        server_error("上传过程网络异常");
-        stopXHR(xhr);
-    };
-
-    xhr.onload = function(e) {
-        var status = e.currentTarget.status;
-
-        if (status === 200) {
-            server_notice("网页文件上传成功");
-            onUploadSuccess(this.responseText);
-            stopXHR(xhr);
-        } else {
-            server_error("上传过程网络异常");
-            stopXHR(xhr);
-        }
-    };
-
-    xhr.onerror = function(){
-        server_error("上传过程网络异常");
-        stopXHR(xhr);
-    };
-
-    xhr.onabort = function(){
-        server_error("上传过程网络异常");
-        stopXHR(xhr);
-    };
-
-    var form = new FormData();
-
-    form.append("signature", upyun_token[1]);
-    form.append("policy", upyun_token[0]);
-    form.append("file", buildBlobContent(backgroundPage.capturedContent), backgroundPage.type === "image" ? "a.png" : "a.html");
-
-    xhr.open("post", upyun_server, true);
-    xhr.send(form);
-}
-
 save_html.on("click", function(){
 
-    if (upyun_token) {
-        startUpload();
-        return;
-    }
-
-    $.ajax(base_url + "j/upyun/token", {
-        data     : { type: upload_type, num: 1 },
-        cache    : false,
-        dataType : "json"
-    }).done(function(d){
-
-        if (d) {
-            if (d.error_code) {
-                if (!upyun_token) {
-                    server_error(d.error);
-                }
-
-            } else {
-                upyun_token = d.tokens[0];
-            }
-        }
-        
-    }).fail(function(){
-        if (!upyun_token) {
-            server_error("获取上传tokens失败，请重新尝试");
-        }
-    }).always(function(){
-        if (upyun_token) {
-            startUpload();
-        }
+    Upload.uploadImage(post_data, function(d){
+        onUploadSuccess(d);
+    }, function(message){
+        server_error(message);
+    }, { 
+        type: "widget",
+        mime: backgroundPage.type === "image" ? null : "text/html",
+        progress: function(e){
+            server_notice((e.loaded / e.total) * 100 + "%");
+        } 
     });
-
 });
 
 

@@ -1,63 +1,50 @@
-// Copyright (c) 2010 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
 var page = {
-  startX: 250,
-  startY: 150,
-  endX: 650,
-  endY: 450,
-  moveX: 0,
-  moveY: 0,
-  pageWidth: 0,
-  pageHeight: 0,
   visibleWidth: 0,
   visibleHeight: 0,
-  dragging: false,
-  moving: false,
-  resizing: false,
-  isMouseDown: false,
   scrollXCount: 0,
   scrollYCount: 0,
-  scrollX: 0,
-  scrollY: 0,
   captureWidth: 0,
   captureHeight: 0,
-  isSelectionAreaTurnOn: false,
   fixedElements_ : [],
-  marginTop: 0,
-  marginLeft: 0,
   modifiedBottomRightFixedElements: [],
-  originalViewPortWidth: document.documentElement.clientWidth,
-  defaultScrollBarWidth: 17, // Default scroll bar width on windows platform.
+  originalViewPortWidth: window.innerWidth,
 
-  /**
-   * Determine if the page scrolled to bottom or right.
-   */
-  isScrollToPageEnd: function(coordinate) {
-    var body = document.body;
-    var docElement = document.documentElement;
-    if (coordinate == 'x')
-      return docElement.clientWidth + body.scrollLeft == body.scrollWidth;
-    else if (coordinate == 'y')
-      return docElement.clientHeight + body.scrollTop == body.scrollHeight;
+  hookBodyScrollValue: function(needHook) {
+    document.documentElement.setAttribute(
+        "__screen_capture_need_hook_scroll_value__", needHook);
+    var event = document.createEvent('Event');
+    event.initEvent('__screen_capture_check_hook_status_event__', true, true);
+    document.documentElement.dispatchEvent(event);
   },
 
   /**
    * Detect if the view port is located to the corner of page.
    */
   detectPagePosition: function() {
-    var body = document.body;
-    var pageScrollTop = body.scrollTop;
-    var pageScrollLeft = body.scrollLeft;
+
+    var pageScrollTop = page.scrollYCount * page.visibleHeight;
+    var pageScrollLeft = page.scrollXCount * page.visibleWidth;
+    var right = (pageScrollLeft + page.visibleWidth) >= page.captureWidth;
+    var bottom = (pageScrollTop + page.visibleHeight) >= page.captureHeight;
+
     if (pageScrollTop == 0 && pageScrollLeft == 0) {
       return 'top_left';
-    } else if (pageScrollTop == 0 && this.isScrollToPageEnd('x')) {
+    } else if (pageScrollTop == 0 && right) {
       return 'top_right';
-    } else if (this.isScrollToPageEnd('y') && pageScrollLeft == 0) {
+    } else if (bottom && pageScrollLeft == 0) {
       return 'bottom_left';
-    } else if (this.isScrollToPageEnd('y') && this.isScrollToPageEnd('x')) {
+    } else if (bottom && right) {
       return 'bottom_right';
+    } else if (pageScrollLeft == 0) {
+        return "left";
+    } else if (pageScrollTop == 0) {
+        return "top";
+    } else if (right) {
+        return "right";
+    } else if (bottom) {
+        return "bottom";
     }
+
     return null;
   },
 
@@ -68,9 +55,9 @@ var page = {
    *   top_left, top_right, bottom_left, bottom_right, or null.
    */
   detectCapturePositionOfFixedElement: function(elem) {
-    var docElement = document.documentElement;
-    var viewPortWidth = docElement.clientWidth;
-    var viewPortHeight = docElement.clientHeight;
+    var size = page.getViewPortSize();
+    var viewPortWidth = size.width;
+    var viewPortHeight = size.height;
     var offsetWidth = elem.offsetWidth;
     var offsetHeight = elem.offsetHeight;
     var offsetTop = elem.offsetTop;
@@ -93,6 +80,7 @@ var page = {
     // If the element is out of view port, then ignore.
     if (result.length != 2)
       return null;
+
     return result.join('_');
   },
 
@@ -107,13 +95,11 @@ var page = {
    * Iterate DOM tree and cache visible fixed-position elements.
    */
   cacheVisibleFixedPositionedElements: function() {
-    var nodeIterator = document.createNodeIterator(
-        document.documentElement,
-        NodeFilter.SHOW_ELEMENT,
-        null,
-        false
-    );
+
+    var nodeIterator = document.createNodeIterator(document.documentElement, NodeFilter.SHOW_ELEMENT, null, false);
+
     var currentNode;
+
     while (currentNode = nodeIterator.nextNode()) {
       var nodeComputedStyle =
           document.defaultView.getComputedStyle(currentNode, "");
@@ -152,63 +138,6 @@ var page = {
         element[1].style.visibility = 'hidden';
     });
   },
-
-  handleSecondToLastCapture: function() {
-    var docElement = document.documentElement;
-    var body = document.body;
-    var bottomPositionElements = [];
-    var rightPositionElements = [];
-    var that = this;
-    this.fixedElements_.forEach(function(element) {
-      var position = element[0];
-      if (position == 'bottom_left' || position == 'bottom_right') {
-        bottomPositionElements.push(element[1]);
-      } else if (position == 'bottom_right' || position == 'top_right') {
-        rightPositionElements.push(element[1]);
-      }
-    });
-
-    // Determine if the current capture is last but one.
-    var remainingCaptureHeight = body.scrollHeight - docElement.clientHeight -
-      body.scrollTop;
-    if (remainingCaptureHeight > 0 &&
-        remainingCaptureHeight < docElement.clientHeight) {
-      bottomPositionElements.forEach(function(element) {
-        if (element.offsetHeight > remainingCaptureHeight) {
-          element.style.visibility = 'visible';
-          var originalBottom = window.getComputedStyle(element).bottom;
-          that.modifiedBottomRightFixedElements.push(
-            ['bottom', element, originalBottom]);
-          element.style.bottom = -remainingCaptureHeight + 'px';
-        }
-      });
-    }
-
-    var remainingCaptureWidth = body.scrollWidth - docElement.clientWidth -
-      body.scrollLeft;
-    if (remainingCaptureWidth > 0 &&
-        remainingCaptureWidth < docElement.clientWidth) {
-      rightPositionElements.forEach(function(element) {
-        if (element.offsetWidth > remainingCaptureWidth) {
-          element.style.visibility = 'visible';
-          var originalRight = window.getComputedStyle(element).right;
-          that.modifiedBottomRightFixedElements.push(
-            ['right', element, originalRight]);
-          element.style.right = -remainingCaptureWidth + 'px';
-        }
-      });
-    }
-  },
-
-  restoreBottomRightOfFixedPositionElements: function() {
-    this.modifiedBottomRightFixedElements.forEach(function(data) {
-      var property = data[0];
-      var element = data[1];
-      var originalValue = data[2];
-      element.style[property] = originalValue;
-    });
-    this.modifiedBottomRightFixedElements = [];
-  },
   
   hideAllFixedPositionedElements: function() {
     this.fixedElements_.forEach(function(element) {
@@ -216,51 +145,12 @@ var page = {
     });
   },
 
-  hasScrollBar: function(axis) {
-    var body = document.body;
-    var docElement = document.documentElement;
-    if (axis == 'x') {
-      if (window.getComputedStyle(body).overflowX == 'scroll')
-        return true;
-      return Math.abs(body.scrollWidth - docElement.clientWidth) >=
-          page.defaultScrollBarWidth;
-    } else if (axis == 'y') {
-      if (window.getComputedStyle(body).overflowY == 'scroll')
-        return true;
-      return Math.abs(body.scrollHeight - docElement.clientHeight) >=
-          page.defaultScrollBarWidth;
-    }
-  },
-
   getOriginalViewPortWidth: function() {
-    page.originalViewPortWidth = document.documentElement.clientWidth;
-  },
-  
-  calculateSizeAfterZooming: function(originalSize) {
-    var originalViewPortWidth = page.originalViewPortWidth;
-    var currentViewPortWidth = document.documentElement.clientWidth;
-    if (originalViewPortWidth == currentViewPortWidth)
-      return originalSize;
-    return Math.round(
-        originalViewPortWidth * originalSize / currentViewPortWidth);
-  },
-
-  getZoomLevel: function() {
-    return page.originalViewPortWidth / document.documentElement.clientWidth;
+    page.originalViewPortWidth = window.innerWidth;
   },
 
   getViewPortSize: function() {
-    var result = {
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight
-    };
-
-    if (document.compatMode == 'BackCompat') {
-      result.width = document.body.clientWidth;
-      result.height = document.body.clientHeight;
-    }
-
-    return result;
+    return { width: window.innerWidth, height: window.innerHeight };
   },
 
   /**
@@ -270,32 +160,17 @@ var page = {
 
     chrome.runtime.onMessage.addListener(function(request, sender, response) {
 
-      if (page.isSelectionAreaTurnOn) {
-        page.removeSelectionArea();
+      if (page.area) {
+        page.area.hide();
       }
       
       switch (request.message) {
         case 'ktb_extension_capture_part':
           page.showSelectionArea();
           break;
-        // case 'show_selection_area': page.showSelectionArea();
-        //   break;
-        // case 'scroll_init': // Capture whole page.
-        //   response(page.scrollInit(0, 0, document.body.scrollWidth,
-        //       document.body.scrollHeight, 'captureWhole'));
-        //   break;
-        // case 'scroll_next':
-        //   page.visibleWidth = request.visibleWidth;
-        //   page.visibleHeight = request.visibleHeight;
-        //   response(page.scrollNext());
-        //   break;
-        // case 'capture_selected':
-        //   response(page.scrollInit(
-        //       page.startX, page.startY,
-        //       page.calculateSizeAfterZooming(page.endX - page.startX),
-        //       page.calculateSizeAfterZooming(page.endY - page.startY),
-        //       'captureSelected'));
-        //   break;
+        case 'ktb_extension_capture_hole':
+          page.scrollInit(0, 0);
+          break;
       }
 
       
@@ -305,72 +180,109 @@ var page = {
   /**
   * Initialize scrollbar position, and get the data browser
   */
-  scrollInit: function(startX, startY, canvasWidth, canvasHeight, type) {
+  scrollInit: function(startX, startY) {
+
+    page.captureWidth = document.body.scrollWidth;
+    page.captureHeight = document.body.scrollHeight;
+    page.startX = startX;
+    page.startY = startY;
+
+    var viewPortSize = page.getViewPortSize();
+    var canvas = page.createCanvas();
+
+    canvas.width = page.captureWidth;
+    canvas.height = page.captureHeight;
+
     this.hookBodyScrollValue(true);
-    page.captureHeight = canvasHeight;
-    page.captureWidth = canvasWidth;
-    var docWidth = document.body.scrollWidth;
-    var docHeight = document.body.scrollHeight;
+    document.body.__prevOverflowStatus = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    page.visibleWidth = viewPortSize.width;
+    page.visibleHeight = viewPortSize.height;
+
     window.scrollTo(startX, startY);
 
     this.handleFixedElements('top_left');
-    this.handleSecondToLastCapture();
 
     page.scrollXCount = 0;
-    page.scrollYCount = 1;
-    page.scrollX = window.scrollX; // document.body.scrollLeft
-    page.scrollY = window.scrollY;
-    var viewPortSize = page.getViewPortSize();
-    return {
-      'msg': 'scroll_init_done',
-      'startX': page.calculateSizeAfterZooming(startX),
-      'startY': page.calculateSizeAfterZooming(startY),
-      'scrollX': window.scrollX,
-      'scrollY': window.scrollY,
-      'docHeight': docHeight,
-      'docWidth': docWidth,
-      'visibleWidth': viewPortSize.width,
-      'visibleHeight': viewPortSize.height,
-      'canvasWidth': canvasWidth,
-      'canvasHeight': canvasHeight,
-      'scrollXCount': 0,
-      'scrollYCount': 0,
-      'zoom': page.getZoomLevel()
-    };
+    page.scrollYCount = 0;
+
+    page.captureAndScroll();
+  },
+
+  captureAndScroll: function(position){
+
+    setTimeout(function(){
+      chrome.runtime.sendMessage({ message: "capture_picture" }, function(data){
+        var canvas = page.createCanvas();
+        var image = new Image();
+
+        image.onload = function(){
+
+          var ctx = canvas.getContext("2d");
+          var x = page.scrollXCount * page.visibleWidth;
+          var y = page.scrollYCount * page.visibleHeight;
+
+
+          // if is the last one;
+          if (position && position.indexOf("bottom") >= 0) {
+              y = page.captureHeight - page.visibleHeight;
+          }
+
+          if (position && position.indexOf("right") >= 0) {
+              x = page.captureWidth - page.visibleWidth;
+          }
+
+          ctx.drawImage(image, x, y);
+
+          page.scrollNext();
+
+        };
+
+        image.src = data;
+      });
+    }, 200);
   },
 
   /**
   * Calculate the next position of the scrollbar
   */
   scrollNext: function() {
-    if (page.scrollYCount * page.visibleWidth >= page.captureWidth) {
-      page.scrollXCount++;
-      page.scrollYCount = 0;
+
+    page.scrollXCount++;
+
+    if (page.scrollXCount * page.visibleWidth >= page.captureWidth) {
+      page.scrollYCount++;
+      page.scrollXCount = 0;
     }
-    if (page.scrollXCount * page.visibleHeight < page.captureHeight) {
-      this.restoreBottomRightOfFixedPositionElements();
+
+    if (page.scrollYCount * page.visibleHeight < page.captureHeight) {
+
       var viewPortSize = page.getViewPortSize();
-      window.scrollTo(
-          page.scrollYCount * viewPortSize.width + page.scrollX,
-          page.scrollXCount * viewPortSize.height + page.scrollY);
+
+      window.scrollTo( page.scrollXCount * viewPortSize.width, page.scrollYCount * viewPortSize.height);
 
       var pagePosition = this.detectPagePosition();
-      if (pagePosition) {
+
+      if (pagePosition && pagePosition.split("_").length === 2) {
         this.handleFixedElements(pagePosition);
       } else {
         this.hideAllFixedPositionedElements();
       }
-      this.handleSecondToLastCapture();
 
-      var x = page.scrollXCount;
-      var y = page.scrollYCount;
-      page.scrollYCount++;
-      return { msg: 'scroll_next_done',scrollXCount: x, scrollYCount: y };
-    }  else {
+      page.captureAndScroll(pagePosition);
+
+    } else {
+
       window.scrollTo(page.startX, page.startY);
+
       this.restoreFixedElements();
       this.hookBodyScrollValue(false);
-      return {'msg': 'scroll_finished'};
+
+      document.body.style.overflow = document.body.__prevOverflowStatus || "";
+      delete document.body.__prevOverflowStatus;
+
+      chrome.runtime.sendMessage({ message: "capture_data", data: page.canvas.toDataURL("image/jpeg", 0.95), location_href: location.href });
     }
   },
 
@@ -378,277 +290,57 @@ var page = {
   * Show the selection Area
   */
   showSelectionArea: function() {
-    page.createFloatLayer();
-    setTimeout(page.createSelectionArea, 100);
-  },
-
-  /**
-  * Create a float layer on the webpage
-  */
-  createFloatLayer: function() {
-    page.createDiv(document.body, 'sc_drag_area_protector');
-  },
-  
-  matchMarginValue: function(str) {
-    return str.match(/\d+/);
-  },
-
-  /**
-  * Load the screenshot area interface
-  */
-  createSelectionArea: function() {
-    var areaProtector = $('sc_drag_area_protector');
-    var zoom = page.getZoomLevel();
-    var bodyStyle = window.getComputedStyle(document.body, null);
-    if ('relative' == bodyStyle['position']) {
-      page.marginTop = page.matchMarginValue(bodyStyle['marginTop']);
-      page.marginLeft = page.matchMarginValue(bodyStyle['marginLeft']);
-      areaProtector.style.top =  - parseInt(page.marginTop) + 'px';
-      areaProtector.style.left =  - parseInt(page.marginLeft) + 'px';
-    }
-    areaProtector.style.width =
-      Math.round((document.width + parseInt(page.marginLeft)) / zoom) + 'px';
-    areaProtector.style.height =
-      Math.round((document.height + parseInt(page.marginTop)) / zoom) + 'px';
-    areaProtector.onclick = function() {
-      event.stopPropagation();
-      return false;
-    };
-
-    // Create elements for area capture.
-    page.createDiv(areaProtector, 'sc_drag_shadow_top');
-    page.createDiv(areaProtector, 'sc_drag_shadow_bottom');
-    page.createDiv(areaProtector, 'sc_drag_shadow_left');
-    page.createDiv(areaProtector, 'sc_drag_shadow_right');
-
-    var areaElement = page.createDiv(areaProtector, 'sc_drag_area');
-    page.createDiv(areaElement, 'sc_drag_container');
-    page.createDiv(areaElement, 'sc_drag_size');
-
-    // Add event listener for 'cancel' and 'capture' button.
-    var cancel = page.createDiv(areaElement, 'sc_drag_cancel');
-    cancel.addEventListener('mousedown', function () {
-      // Remove area capture containers and event listeners.
-      page.removeSelectionArea();
-    }, true);
-    cancel.innerHTML = "取消"
-
-    var crop = page.createDiv(areaElement, 'sc_drag_crop');
-
-    crop.addEventListener('mousedown', function() {
-      page.captureSelected();
-    }, false);
-
-    crop.innerHTML = "确定";
-
-    page.createDiv(areaElement, 'sc_drag_north_west');
-    page.createDiv(areaElement, 'sc_drag_north_east');
-    page.createDiv(areaElement, 'sc_drag_south_east');
-    page.createDiv(areaElement, 'sc_drag_south_west');
-
-    areaProtector.addEventListener('mousedown', page.onMouseDown, false);
-    document.addEventListener('mousemove', page.onMouseMove, false);
-    document.addEventListener('mouseup', page.onMouseUp, false);
-
-    $('sc_drag_container').addEventListener('dblclick', page.onMouseDBClick, false);
-
-    page.pageHeight = $('sc_drag_area_protector').clientHeight;
-    page.pageWidth = $('sc_drag_area_protector').clientWidth;
-
-    page.startX = document.body.scrollLeft + 250;
-    page.startY = document.body.scrollTop + 150;
-    page.endX   = document.body.scrollLeft + 650;
-    page.endY   = document.body.scrollTop + 450;
-
-    areaElement.style.left = page.startX + 'px';
-    areaElement.style.top = page.startY + 'px';
-
-    areaElement.style.width = page.endX - page.startX + "px";
-    areaElement.style.height = page.endY - page.startY + "px";
-    
-    page.isSelectionAreaTurnOn = true;
-    page.updateShadow(areaElement);
-    page.updateSize();
-
-  },
-
-  /**
-  * Init selection area due to the position of the mouse when mouse down
-  */
-  onMouseDown: function() {
-    if (event.button != 2) {
-      var element = event.target;
-
-      if (element) {
-        var elementName = element.tagName;
-        if (elementName && document) {
-          page.isMouseDown = true;
-
-          var areaElement = $('sc_drag_area');
-          var xPosition = event.pageX;
-          var yPosition = event.pageY;
-
-          if (areaElement) {
-            if (element == $('sc_drag_container')) {
-              page.moving = true;
-              page.moveX = xPosition - areaElement.offsetLeft;
-              page.moveY = yPosition - areaElement.offsetTop;
-            } else if (element == $('sc_drag_north_east')) {
-              page.resizing = true;
-              page.startX = areaElement.offsetLeft;
-              page.startY = areaElement.offsetTop + areaElement.clientHeight;
-            } else if (element == $('sc_drag_north_west')) {
-              page.resizing = true;
-              page.startX = areaElement.offsetLeft + areaElement.clientWidth;
-              page.startY = areaElement.offsetTop + areaElement.clientHeight;
-            } else if (element == $('sc_drag_south_east')) {
-              page.resizing = true;
-              page.startX = areaElement.offsetLeft;
-              page.startY = areaElement.offsetTop;
-            } else if (element == $('sc_drag_south_west')) {
-              page.resizing = true;
-              page.startX = areaElement.offsetLeft + areaElement.clientWidth;
-              page.startY = areaElement.offsetTop;
-            } else {
-              page.dragging = true;
-              page.endX = 0;
-              page.endY = 0;
-              page.endX = page.startX = xPosition;
-              page.endY = page.startY = yPosition;
-            }
-          }
-          event.preventDefault();
-        }
+    page.area = Crop.init(document.body, {
+      onselect: function(sx, sy, ex, ey){
+        page.captureSelected(sx, sy, ex, ey);
       }
+    });
+
+    page.area.showAt(document.body.scrollLeft + 300, document.body.scrollTop + 200, 400, 200);
+  },
+
+  createCanvas: function(){
+
+    if (page.canvas) {
+        return page.canvas;
     }
-  },
 
-  /**
-  * Change selection area position when mouse moved
-  */
-  onMouseMove: function() {
-    var element = event.target;
-    if (element && page.isMouseDown) {
-      var areaElement = $('sc_drag_area');
-      if (areaElement) {
-        var xPosition = event.pageX;
-        var yPosition = event.pageY;
-        if (page.dragging || page.resizing) {
-          var width = 0;
-          var height = 0;
-          var zoom = page.getZoomLevel();
-          var viewWidth = Math.round(document.width / zoom);
-          var viewHeight = Math.round(document.height / zoom);
-          if (xPosition > viewWidth) {
-            xPosition = viewWidth;
-          } else if (xPosition < 0) {
-            xPosition = 0;
-          }
-          if (yPosition > viewHeight) {
-            yPosition = viewHeight;
-          } else if (yPosition < 0) {
-            yPosition = 0;
-          }
-          page.endX = xPosition;
-          page.endY = yPosition;
-          if (page.startX > page.endX) {
-            width = page.startX - page.endX;
-            areaElement.style.left = xPosition + 'px';
-          } else {
-            width = page.endX - page.startX;
-            areaElement.style.left = page.startX + 'px';
-          }
-          if (page.startY > page.endY) {
-            height = page.startY - page.endY;
-            areaElement.style.top = page.endY + 'px';
-          } else {
-            height = page.endY - page.startY;
-            areaElement.style.top = page.startY + 'px';
-          }
-          areaElement.style.height = height + 'px';
-          areaElement.style.width  = width + 'px';
-          if (window.innerWidth < xPosition) {
-            document.body.scrollLeft = xPosition - window.innerWidth;
-          }
-          if (document.body.scrollTop + window.innerHeight < yPosition + 25) {
-            document.body.scrollTop = yPosition - window.innerHeight + 25;
-          }
-          if (yPosition < document.body.scrollTop) {
-            document.body.scrollTop -= 25;
-          }
-        } else if (page.moving) {
-          var newXPosition = xPosition - page.moveX;
-          var newYPosition = yPosition - page.moveY;
-          if (newXPosition < 0) {
-            newXPosition = 0;
-          } else if (newXPosition + areaElement.clientWidth > page.pageWidth) {
-            newXPosition = page.pageWidth - areaElement.clientWidth;
-          }
-          if (newYPosition < 0) {
-            newYPosition = 0;
-          } else if (newYPosition + areaElement.clientHeight >
-                     page.pageHeight) {
-            newYPosition = page.pageHeight - areaElement.clientHeight;
-          }
+    var canvas = document.createElement("canvas");
 
-          areaElement.style.left = newXPosition + 'px';
-          areaElement.style.top = newYPosition + 'px';
-          page.endX = newXPosition + areaElement.clientWidth;
-          page.startX = newXPosition;
-          page.endY = newYPosition + areaElement.clientHeight;
-          page.startY = newYPosition;
+    canvas.style.display = "none";
 
-        }
-        var crop = document.getElementById('sc_drag_crop');
-        var cancel = document.getElementById('sc_drag_cancel');
-        if (event.pageY + 25 > document.height) {
-          crop.style.bottom = 0;
-          cancel.style.bottom = 0
-        } else {
-          crop.style.bottom = '-25px';
-          cancel.style.bottom = '-25px';
-        }
-
-        var dragSizeContainer = document.getElementById('sc_drag_size');
-        if (event.pageY < 18) {
-          dragSizeContainer.style.top = 0;
-        } else {
-          dragSizeContainer.style.top = '-18px';
-        }
-        page.updateShadow(areaElement);
-        page.updateSize();
-
-      }
+    try {
+      HtmlCollector.container.appendChild(canvas);
+    } catch(e){
+      document.body.appendChild(canvas);
     }
+
+    page.canvas = canvas;
+
+    return canvas;
   },
 
-  onMouseDBClick: function(){
-    page.captureSelected();
-  },
-
-  captureSelected: function(){
-
-    page.removeSelectionArea();
+  captureSelected: function(sx, sy, ex, ey){
 
     setTimeout(function() {
+
       chrome.runtime.sendMessage({ message: "capture_picture" }, function(data){
 
-        var canvas = document.createElement("canvas");
+        var canvas = page.createCanvas();
+
         var image = new Image();
 
-        canvas.style.display = "none";
-        document.body.appendChild(canvas);
-
-        canvas.width = page.endX - page.startX;
-        canvas.height = page.endY - page.startY;
+        canvas.width = ex - sx;
+        canvas.height = ey - sy;
 
         image.onload = function(){
 
           var ctx = canvas.getContext("2d");
+          var bodyOffset = document.body.getBoundingClientRect();
 
-          ctx.drawImage(image, document.body.scrollLeft - page.startX, document.body.scrollTop - page.startY);
+          ctx.drawImage(image, document.body.scrollLeft - bodyOffset.left - sx, document.body.scrollTop - bodyOffset.top - sy);
 
-          var dataUrl = canvas.toDataURL();
+          var dataUrl = canvas.toDataURL("image/jpeg", 0.95);
 
           chrome.runtime.sendMessage({ message: "capture_data", data: dataUrl, location_href: location.href });
 
@@ -656,129 +348,16 @@ var page = {
 
         image.src = data;
       });
+
     }, 200);
 
-  },
-
- /**
-  * Fix the selection area position when mouse up
-  */
-  onMouseUp: function() {
-    page.isMouseDown = false;
-    if (event.button != 2) {
-      page.resizing = false;
-      page.dragging = false;
-      page.moving = false;
-      page.moveX = 0;
-      page.moveY = 0;
-      var temp;
-      if (page.endX < page.startX) {
-        temp = page.endX;
-        page.endX = page.startX;
-        page.startX = temp;
-      }
-      if (page.endY < page.startY) {
-        temp = page.endY;
-        page.endY = page.startY;
-        page.startY = temp;
-      }
-    }
-  },
-
-  /**
-  * Update the location of the shadow layer
-  */
-  updateShadow: function(areaElement) {
-    $('sc_drag_shadow_top').style.height =
-        parseInt(areaElement.style.top) + 'px';
-    $('sc_drag_shadow_top').style.width = (parseInt(areaElement.style.left) +
-        parseInt(areaElement.style.width) + 1) + 'px';
-    $('sc_drag_shadow_left').style.height =
-        (page.pageHeight - parseInt(areaElement.style.top)) + 'px';
-    $('sc_drag_shadow_left').style.width =
-        parseInt(areaElement.style.left) + 'px';
-
-    var height = (parseInt(areaElement.style.top) +
-        parseInt(areaElement.style.height) + 1);
-    height = (height < 0) ? 0 : height;
-    var width = (page.pageWidth) - 1 - (parseInt(areaElement.style.left) +
-        parseInt(areaElement.style.width));
-    width = (width < 0) ? 0 : width;
-    $('sc_drag_shadow_right').style.height = height + 'px';
-    $('sc_drag_shadow_right').style.width =  width + 'px';
-
-    height = (page.pageHeight - 1 - (parseInt(areaElement.style.top) +
-        parseInt(areaElement.style.height)));
-    height = (height < 0) ? 0 : height;
-    width = (page.pageWidth) - parseInt(areaElement.style.left);
-    width = (width < 0) ? 0 : width;
-    $('sc_drag_shadow_bottom').style.height = height + 'px';
-    $('sc_drag_shadow_bottom').style.width = width + 'px';
-  },
-
-  /**
-  * Remove selection area
-  */
-  removeSelectionArea: function() {
-    document.removeEventListener('mousedown', page.onMouseDown, false);
-    document.removeEventListener('mousemove', page.onMouseMove, false);
-    document.removeEventListener('mouseup', page.onMouseUp, false);
-    $('sc_drag_container').removeEventListener('dblclick', page.onMouseDBClick, false);
-      
-    page.removeElement('sc_drag_area_protector');
-    page.removeElement('sc_drag_area');
-    page.isSelectionAreaTurnOn = false;
-  },
-
-  /**
-  * Refresh the size info
-  */
-  updateSize: function() {
-    var width = Math.abs(page.endX - page.startX);
-    var height = Math.abs(page.endY - page.startY);
-
-    $('sc_drag_size').innerText = page.calculateSizeAfterZooming(width) +
-      ' x ' + page.calculateSizeAfterZooming(height);
-  },
-
-  /**
-  * create div
-  */
-  createDiv: function(parent, id) {
-    var divElement = document.createElement('div');
-    divElement.id = id;
-    parent.appendChild(divElement);
-    return divElement;
-  },
-
-  /**
-  * Remove an element
-  */
-  removeElement: function(id) {
-    var element = $(id);
-
-    if(element && element.parentNode) {
-      element.parentNode.removeChild(element);
-    }
-  },
-
-  injectCssResource: function(cssResource) {
-    var css = document.createElement('LINK');
-    css.type = 'text/css';
-    css.rel = 'stylesheet';
-    css.href = chrome.extension.getURL(cssResource);
-    (document.head || document.body || document.documentElement).
-        appendChild(css);
   },
 
   /**
   * Remove an element
   */
   init: function() {
-
-    this.injectCssResource('css/capture_page.css');
     this.addMessageListener();
-
     page.getOriginalViewPortWidth();
   }
 };
@@ -791,11 +370,6 @@ function $(id) {
 page.init();
 
 window.addEventListener('resize', function() {
-  if (page.isSelectionAreaTurnOn) {
-    page.removeSelectionArea();
-    page.showSelectionArea();
-  }
-
   // Reget original width of view port if browser window resized or page zoomed.
   page.getOriginalViewPortWidth();
 }, false);

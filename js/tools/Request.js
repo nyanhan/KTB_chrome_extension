@@ -84,7 +84,11 @@ function getText(url, always) {
     });
 }
 
-function getImage(url, always){
+function getImage(url, always, error){
+
+    if (!error) {
+        error = always;
+    }
 
     crossOriginGetRequest(url, "blob", function(result){
 
@@ -95,13 +99,13 @@ function getImage(url, always){
         };
 
         reader.onerror = function(){
-            always(EMPTY_IMAGE);
+            error(EMPTY_IMAGE);
         };
 
         reader.readAsDataURL(result);
 
     }, function(){
-        always(EMPTY_IMAGE);
+        error(EMPTY_IMAGE);
     });
 }
 
