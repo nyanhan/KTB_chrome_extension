@@ -1,3 +1,6 @@
+### 0.4.5
++ chrome 27 new Image Error
+
 ### 0.4.4
 + 修改域名 zhaohaowan.com
 
