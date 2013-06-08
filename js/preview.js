@@ -37,6 +37,8 @@ function handleHTMLPreview(background){
     var preview_frame = $("#preview_frame")[0];
 
     preview_frame.contentDocument.write(background.capturedContent);
+    // to trigger domready
+    preview_frame.contentDocument.close();
 
     window.addEventListener("resize", resizeHandler, false);
     resizeHandler();

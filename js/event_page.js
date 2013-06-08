@@ -36,7 +36,7 @@ var sendMessageToActiveTabOfCurrentWindow = function(message, sendMessage) {
 var getKantubanUserInfo = function(func){
 
     chrome.cookies.getAll({
-        domain: ".kantuban.com",
+        domain: ".zhaohaowan.com",
     }, function(cookies){
 
         function get(name) {
@@ -60,7 +60,7 @@ var getKantubanUserInfo = function(func){
 
 
 
-var baseServerLocation = "http://www.kantuban.com/";
+var baseServerLocation = "http://www.zhaohaowan.com/";
 
 
 var capturedContent;

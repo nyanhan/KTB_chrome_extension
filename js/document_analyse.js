@@ -224,7 +224,7 @@ function fetchFrameContent(iframe, always){
             message: "",
             token: token
         });
-    }, 5000);
+    }, 10000);
     
 }
 
@@ -265,7 +265,8 @@ function isUseful(rule) {
 
     try {
 
-        items = returnObject.__clone.querySelectorAll(rule);
+        items = returnObject.__clone.tagName === rule.toUpperCase() ? 
+                [returnObject.__clone] : returnObject.__clone.querySelectorAll(rule);
 
         if (items.length) {
 
