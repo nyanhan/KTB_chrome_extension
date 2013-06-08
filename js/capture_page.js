@@ -215,7 +215,7 @@ var page = {
     setTimeout(function(){
       chrome.runtime.sendMessage({ message: "capture_picture" }, function(data){
         var canvas = page.createCanvas();
-        var image = document.createElement('img');
+        var image = new Image();
 
         image.onload = function(){
 
@@ -328,7 +328,7 @@ var page = {
 
         var canvas = page.createCanvas();
 
-        var image = document.createElement('img');
+        var image = new Image();
 
         canvas.width = ex - sx;
         canvas.height = ey - sy;
