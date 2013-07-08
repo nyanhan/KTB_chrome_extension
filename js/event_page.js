@@ -1,3 +1,12 @@
+var ydOauth = "http://note.youdao.com/oauth";
+
+
+
+
+
+
+
+
 var checkUpload = function() {
 
     chrome.runtime.requestUpdateCheck(function(status) {

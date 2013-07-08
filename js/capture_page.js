@@ -215,7 +215,7 @@ var page = {
     setTimeout(function(){
       chrome.runtime.sendMessage({ message: "capture_picture" }, function(data){
         var canvas = page.createCanvas();
-        var image = new Image();
+        var image = document.createElement("img");
 
         image.onload = function(){
 
@@ -235,9 +235,19 @@ var page = {
 
           ctx.drawImage(image, x, y);
 
+          if (image.parentNode) {
+              image.parentNode.removeChild(image);
+          }
+
           page.scrollNext();
 
         };
+
+        try {
+          HtmlCollector.container.appendChild(image);
+        } catch(e){
+          document.body.appendChild(image);
+        }
 
         image.src = data;
       });
@@ -290,7 +300,7 @@ var page = {
   * Show the selection Area
   */
   showSelectionArea: function() {
-    page.area = Crop.init(document.body, {
+    page.area = Crop.init(document.documentElement, {
       onselect: function(sx, sy, ex, ey){
         page.captureSelected(sx, sy, ex, ey);
       }
@@ -328,7 +338,7 @@ var page = {
 
         var canvas = page.createCanvas();
 
-        var image = new Image();
+        var image = document.createElement("img");
 
         canvas.width = ex - sx;
         canvas.height = ey - sy;
@@ -338,13 +348,23 @@ var page = {
           var ctx = canvas.getContext("2d");
           var bodyOffset = document.body.getBoundingClientRect();
 
-          ctx.drawImage(image, document.body.scrollLeft - bodyOffset.left - sx, document.body.scrollTop - bodyOffset.top - sy);
+          ctx.drawImage(image, document.body.scrollLeft - sx, document.body.scrollTop - sy);
 
           var dataUrl = canvas.toDataURL("image/jpeg", 0.95);
 
           chrome.runtime.sendMessage({ message: "capture_data", data: dataUrl, location_href: location.href });
 
+          if (image.parentNode) {
+              image.parentNode.removeChild(image);
+          }
+
         };
+
+        try {
+          HtmlCollector.container.appendChild(image);
+        } catch(e){
+          document.body.appendChild(image);
+        }
 
         image.src = data;
       });

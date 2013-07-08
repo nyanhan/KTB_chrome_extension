@@ -359,9 +359,11 @@ function filterStyles(styles, func, root, inline) {
 
                     array[i] = null;
 
-                    styleSheet.cssRules.reverse().forEach(function(r){
-                        rules.insertRule(r.cssText, i + 1);
-                    });
+                    if (styleSheet.cssRules) {
+                        styleSheet.cssRules.reverse().forEach(function(r){
+                            rules.insertRule(r.cssText, i + 1);
+                        });   
+                    }
 
                     defer.resolve();
 

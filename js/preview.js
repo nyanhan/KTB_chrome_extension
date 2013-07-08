@@ -2,15 +2,60 @@ var backgroundPage;
 var base_url;
 var global_canvas;
 var post_data;
+var ydOauth;
+
+(function(){
+    "use strict";
+
+    var reURL    = (/^([^:\s]+):\/{2,3}([^\/\s:]+)(?::(\d{1,5}))?(\/[^\?\s#]+)?(\?[^#\s]+)?(#[^\s]+)?/),
+        reSearch = (/(?:[\?&])(\w+)=([^#&\s]*)/g),
+        URLLi    = "protocol host port path search hash";
+
+
+    $.extend({
+        parseURL: function(url) {
+            if (!url) {
+                url = location.href;
+            }
+
+            var arr  = url.match(reURL),
+                temp = {};
+
+            $.each(URLLi.split(" "), function(i, item) {
+                temp[item] = arr[i];
+            });
+
+            return temp;
+        },
+        parseSearch: function(search) {
+            if (!search) {
+                search = location.search;
+            }
+
+            var temp = {};
+
+            search.replace(reSearch, function(a, f, s) {
+                temp[f] = decodeURIComponent(s);
+            });
+
+            return temp;
+        }
+    });
+
+})();
+
+
 
 chrome.runtime.getBackgroundPage(function(background){
 
     backgroundPage = background;
     base_url = background.baseServerLocation;
     post_data = background.capturedContent;
+    ydOauth = background.ydOauth;
 
     backgroundPage.getKantubanUserInfo(function(info){
         var info_container = $('.header-right')[0];
+        var youdao_container = $('.header-right')[1];
 
         if (info) {
             info_container.innerHTML = '<a class="member" target="_blank" href="' + base_url + 'people/' + info.uid + '"> <img class="member-avatar" height="30" width="30" src="' +
@@ -18,6 +63,50 @@ chrome.runtime.getBackgroundPage(function(background){
         } else {
             info_container.innerHTML = '<a class="header-btn" href="' + base_url + 'account/login?referrer=' + encodeURIComponent(location.href) +
              '"> <span class="header-btn-text">登陆</span> </a>';
+        }
+
+        youdao_container.innerHTML = '<a class="header-btn" href="#"> <span class="header-btn-text">登陆有道云笔记</span> </a>';
+
+        youdao_container.onclick = function(){
+
+            var action = ydOauth + "/request_token";
+
+            var accessor = { 
+                    consumerSecret: "f38ecce1aaee2a36085bd5730c14c093", tokenSecret: ""
+                };
+
+             var message = { 
+                    action: action, 
+                    method: "GET", 
+                    parameters: [
+                        ["oauth_consumer_key", "2ef2ba16e7b5ac6b3ebef7106e4e8b99"],
+                        ["oauth_signature_method", "HMAC-SHA1"],
+                        ["oauth_timestamp", ""],
+                        ["oauth_nonce", ""],
+                        ["oauth_signature", ""]
+                    ]
+                };
+
+            OAuth.setTimestampAndNonce(message);
+            OAuth.SignatureMethod.sign(message, accessor);
+
+            var parameterMap = OAuth.getParameterMap(message.parameters);
+
+            for (var p in parameterMap) {
+                if (p.substring(0, 6) !== "oauth_"){
+                    delete parameterMap[p];
+                }
+            }
+
+            $.get(action, parameterMap, function(d){
+                var obj = $.parseSearch("?" + d);
+
+                var path = ydOauth + "/authorize";
+
+                location.href = path + "?oauth_token=" + obj.oauth_token + "&oauth_callback=" + encodeURIComponent(location.href);
+
+            });
+
         }
     });
 

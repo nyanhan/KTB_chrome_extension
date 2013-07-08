@@ -1,3 +1,9 @@
+### 0.4.7
++ bugfix 部分截屏黑色
+
+### 0.4.6
++ chrome 27 new Image Error
+
 ### 0.4.5
 + chrome 27 new Image Error
 
